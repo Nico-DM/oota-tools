@@ -3,6 +3,12 @@
 ## Uso
 Abrí `index.html` en un navegador moderno. No requiere instalación ni servidor.
 
+Si eso no funciona:
+```bash
+python3 -m http.server 8001
+```
+Después abrí http://localhost:8001/.
+
 ## Archivos separados
 - `index.html`: estructura de la interfaz.
 - `styles.css`: estética, diseño adaptable e impresión.
