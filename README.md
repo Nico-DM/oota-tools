@@ -46,6 +46,10 @@ corriendo; `Ctrl+C` cierra el resto.
   los entornos `.venv` ya creados dentro de `dnd-maps/` y
   `dungeons-and-phones/backend/`. El lanzador usa `uv run` para que cada
   herramienta corra con sus propias dependencias.
+- En Linux, para que las ventanas Tk se vean nítidas hace falta un Tk con Xft.
+  Los Python de uv vienen sin Xft (fuentes pixeladas); instalá `python3-tkinter`
+  del sistema y `./run.py` lo va a preferir. Detalles en
+  [`dnd-maps/README.md`](dnd-maps/README.md#fuentes-pixeladas-en-linux-tk-sin-xft).
 
 Cada herramienta también se puede seguir usando por separado; las
 instrucciones están en el README de cada carpeta.

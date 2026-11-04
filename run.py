@@ -50,6 +50,109 @@ def _port_busy(host: str, port: int) -> bool:
     return False
 
 
+_TK_PROBE = r"""
+import pathlib
+import subprocess
+import sys
+
+try:
+    import _tkinter
+except Exception:
+    sys.exit(1)  # no hay tkinter
+
+# El Tk portable de uv se compila sin Xft: no enlaza libXft y las fuentes
+# salen pixeladas. ldd sobre _tkinter muestra también las dependencias de Tk.
+modulo = pathlib.Path(_tkinter.__file__).resolve()
+try:
+    enlaces = subprocess.run(
+        ["ldd", str(modulo)], capture_output=True, text=True, timeout=10
+    ).stdout
+except Exception:
+    sys.exit(1)
+
+if "libXft" not in enlaces:
+    sys.exit(2)
+
+try:
+    from PIL import ImageTk  # noqa: F401
+except Exception:
+    sys.exit(3)  # Tk con Xft, pero falta Pillow (o su soporte de Tk)
+
+sys.exit(0)
+"""
+
+
+def _probar_tk(python: str) -> str:
+    """Estado de Tk para un intérprete: 'xft', 'sin-xft', 'falta-pillow' o 'no-sirve'."""
+    try:
+        resultado = subprocess.run(
+            [python, "-c", _TK_PROBE],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "no-sirve"
+    return {
+        0: "xft",
+        2: "sin-xft",
+        3: "falta-pillow",
+    }.get(resultado.returncode, "no-sirve")
+
+
+def _candidatos_python() -> list[str]:
+    """Intérpretes que podrían tener un Tk con Xft, sin repetir."""
+    venv_python = MAPS_DIR / (
+        ".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python"
+    )
+    candidatos: list[str] = []
+    vistos: set[str] = set()
+    for ruta in (
+        str(venv_python),
+        shutil.which("python3"),
+        "/usr/bin/python3",
+        "/usr/local/bin/python3",
+        sys.executable,
+    ):
+        if not ruta:
+            continue
+        real = os.path.realpath(ruta)
+        if not os.path.isfile(real) or real in vistos:
+            continue
+        vistos.add(real)
+        candidatos.append(ruta)
+    return candidatos
+
+
+def _con_dependencias(python: str) -> list[str]:
+    """Comando que usa ese Python y deja que uv instale Pillow si falta."""
+    uv = shutil.which("uv")
+    if uv:
+        return [uv, "run", "--python", python, "python"]
+    return [python]
+
+
+def _maps_cmd() -> tuple[list[str], bool]:
+    """Comando para los mapas y si el Tk elegido parece no tener Xft."""
+    elegido = os.environ.get("OOTA_MAPS_PYTHON")
+    if elegido:
+        estado = _probar_tk(elegido)
+        if estado == "falta-pillow":
+            return _con_dependencias(elegido), False
+        return [elegido], estado == "sin-xft"
+
+    sin_xft = False
+    for python in _candidatos_python():
+        estado = _probar_tk(python)
+        if estado == "xft":
+            return [python], False
+        if estado == "falta-pillow":
+            return _con_dependencias(python), False
+        if estado == "sin-xft":
+            sin_xft = True
+    return _python_cmd(MAPS_DIR, "D&D Maps"), sin_xft
+
+
 def _python_cmd(project: Path, label: str) -> list[str]:
     """Comando para ejecutar Python dentro del entorno de un subproyecto."""
     uv = shutil.which("uv")
@@ -233,7 +336,21 @@ def main() -> int:
             )
 
         if run_maps:
-            cmd = _python_cmd(MAPS_DIR, "D&D Maps") + ["dnd.py"]
+            cmd, sin_xft = _maps_cmd()
+            if "--python" in cmd:
+                print(
+                    "[oota] Preparando los mapas con el Python del sistema "
+                    "(Tk con Xft)…",
+                    flush=True,
+                )
+            if sin_xft:
+                print(
+                    "[oota] Aviso: el Tk de este Python no tiene Xft; las fuentes\n"
+                    "       de los mapas se van a ver pixeladas. Instalá\n"
+                    "       python3-tkinter del sistema o mirá dnd-maps/README.md.",
+                    flush=True,
+                )
+            cmd = cmd + ["dnd.py"]
             print("[oota] Iniciando D&D Maps…", flush=True)
             processes.append(
                 (
