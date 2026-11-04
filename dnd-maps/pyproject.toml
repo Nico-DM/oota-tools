@@ -1,0 +1,9 @@
+[project]
+name = "dnd-maps"
+version = "0.1.0"
+description = "Visualizacion de mapas fancy"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "Pillow>=10.1",
+]
