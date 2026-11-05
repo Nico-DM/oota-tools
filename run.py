@@ -283,11 +283,22 @@ def _parse_args() -> argparse.Namespace:
         default="127.0.0.1",
         help="interfaz donde escucha la guía (usá 0.0.0.0 para verla desde otro dispositivo)",
     )
+    parser.add_argument(
+        "--public-ip",
+        default=os.environ.get("DUNGEONS_PUBLIC_IP") or None,
+        help=(
+            "IP que se anuncia a los celulares para Dungeons & Phones. Hace falta "
+            "cuando el programa corre en un contenedor con red NAT (ChromeOS/"
+            "Crostini): usá la IP del equipo, no la del contenedor. También se "
+            "puede definir con DUNGEONS_PUBLIC_IP."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
+    public_ip = args.public_ip.strip() if args.public_ip else None
 
     if args.no_maps and args.no_phones and args.no_guide:
         print("[oota] No hay nada para arrancar: elegiste desactivar las tres herramientas.")
@@ -323,6 +334,9 @@ def main() -> int:
 
         if run_phones:
             cmd = _python_cmd(PHONES_DIR, "Dungeons & Phones") + ["run.py"]
+            env = os.environ.copy()
+            if public_ip:
+                env["DUNGEONS_PUBLIC_IP"] = public_ip
             print("[oota] Iniciando Dungeons & Phones…", flush=True)
             processes.append(
                 (
@@ -330,6 +344,7 @@ def main() -> int:
                     subprocess.Popen(
                         cmd,
                         cwd=PHONES_DIR,
+                        env=env,
                         start_new_session=(os.name != "nt"),
                     ),
                 )
@@ -368,9 +383,15 @@ def main() -> int:
         print("  OOTA TOOLS — mesa del DM")
         print("=" * 68)
         if run_guide:
-            print(f"  Guía del DM          http://127.0.0.1:{args.guide_port}")
+            if public_ip and args.guide_host in ("0.0.0.0", ""):
+                print(f"  Guía del DM          http://{public_ip}:{args.guide_port}")
+            else:
+                print(f"  Guía del DM          http://127.0.0.1:{args.guide_port}")
         if run_phones:
-            print(f"  Dungeons & Phones    http://localhost:{PHONES_PORT}")
+            if public_ip:
+                print(f"  Dungeons & Phones    http://{public_ip}:{PHONES_PORT}")
+            else:
+                print(f"  Dungeons & Phones    http://localhost:{PHONES_PORT}")
             print("                       (el QR para celulares aparece arriba)")
         if run_maps:
             print("  Mapas D&D            ventanas Tk: Mesa del DM + Mapa de jugadores")

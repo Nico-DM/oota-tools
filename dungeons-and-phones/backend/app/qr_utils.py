@@ -1,4 +1,5 @@
 import io
+import os
 import socket
 
 import qrcode
@@ -11,11 +12,36 @@ from zeroconf import Zeroconf, ServiceInfo
 # PC del DM y anunciando este nombre, el link sigue sirviendo.
 MDNS_HOSTNAME = "dungeonsandphones"
 
+# IP que se anuncia a los celulares. Sirve cuando el programa corre
+# dentro de un contenedor/VM con red NAT (por ejemplo el entorno Linux
+# de ChromeOS/Crostini): ahí `get_local_ip()` devuelve la IP interna
+# (100.115.92.x), que ningún celular de la WiFi puede alcanzar. Con esto
+# se fuerza la IP real del equipo y se omite mDNS, que tampoco cruza el
+# NAT del contenedor.
+PUBLIC_IP_ENV = "DUNGEONS_PUBLIC_IP"
+
+
+def get_public_ip() -> str | None:
+    """IP forzada por `DUNGEONS_PUBLIC_IP`, o None si no se configuró."""
+    value = os.environ.get(PUBLIC_IP_ENV, "").strip()
+    if not value:
+        return None
+    # Tolerar que se pegue una URL completa en vez de solo la IP.
+    for prefijo in ("http://", "https://"):
+        if value.lower().startswith(prefijo):
+            value = value[len(prefijo) :]
+    return value.rstrip("/") or None
+
 
 def get_local_ip() -> str:
     """
-    Obtiene la IP local de la PC en la red WiFi.
+    Obtiene la IP local de la PC en la red WiFi (o la forzada por
+    `DUNGEONS_PUBLIC_IP` si está configurada).
     """
+    public_ip = get_public_ip()
+    if public_ip:
+        return public_ip
+
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -28,15 +54,23 @@ def get_local_ip() -> str:
 
 
 def build_connection_url(port: int = 8000) -> str:
-    """URL genérica (mDNS) que el celular abre en el navegador para
-    cargar la PWA. No depende de la IP actual de la PC: mientras
-    `start_mdns_advertiser()` esté corriendo, este hostname siempre
-    resuelve a la PC del DM en la red local.
+    """URL que el celular abre en el navegador para cargar la PWA.
+
+    Por defecto es el hostname mDNS (`dungeonsandphones.local`), que no
+    depende de la IP actual de la PC: mientras
+    `start_mdns_advertiser()` esté corriendo, siempre resuelve a la PC
+    del DM en la red local.
+
+    Si se configuró `DUNGEONS_PUBLIC_IP`, se usa esa IP directamente,
+    porque en un contenedor con NAT (ChromeOS/Crostini) mDNS no llega
+    a los celulares.
 
     La página, una vez cargada, arma su propio ws://<mismo host>/ws/
     {campaign_id} en el JS del cliente (ver static/js/ws.js), así que
     esta función ya no necesita devolver un ws:// crudo.
     """
+    if get_public_ip():
+        return build_fallback_ip_url(port)
     return f"http://{MDNS_HOSTNAME}.local:{port}"
 
 
@@ -49,13 +83,20 @@ def build_fallback_ip_url(port: int = 8000) -> str:
     return f"http://{ip}:{port}"
 
 
-def start_mdns_advertiser(port: int = 8000) -> Zeroconf:
+def start_mdns_advertiser(port: int = 8000) -> Zeroconf | None:
     """Anuncia `MDNS_HOSTNAME.local` en la red apuntando a la IP local
     actual. Devuelve el objeto `Zeroconf` — hay que llamar a
     `.close()` sobre él al apagar el servidor para dejar de anunciar
     el nombre prolijamente (si el proceso muere de golpe, el registro
     igual expira solo por TTL).
+
+    Devuelve `None` si se configuró `DUNGEONS_PUBLIC_IP`: en ese caso
+    los celulares usan la IP directa y no tiene sentido anunciar un
+    nombre que el contenedor no puede publicar en la red real.
     """
+    if get_public_ip():
+        return None
+
     zeroconf = Zeroconf()
     ip = get_local_ip()
     info = ServiceInfo(

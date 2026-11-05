@@ -10,6 +10,7 @@ import uvicorn
 
 from app.qr_utils import (
     get_local_ip,
+    get_public_ip,
     build_connection_url,
     build_fallback_ip_url,
     generate_qr_png_bytes,
@@ -20,6 +21,7 @@ PORT = 8000
 
 if __name__ == "__main__":
     ip = get_local_ip()
+    public_ip = get_public_ip()
     url = build_connection_url(PORT)
     fallback_url = build_fallback_ip_url(PORT)
 
@@ -38,13 +40,20 @@ if __name__ == "__main__":
     print(f"  Abrir en el celular: {url}")
     print(f"  QR guardado en:  {qr_path}")
     print(f"  También podés verlo en: http://{ip}:{PORT}/connection-qr.png")
-    print()
-    print(f"  Si el link de arriba no conecta (pasa en algunas redes")
-    print(f"  WiFi que bloquean mDNS), probá con la IP directa:")
-    print(f"    {fallback_url}")
+    if public_ip:
+        print()
+        print(f"  Usando la IP fija {public_ip} (DUNGEONS_PUBLIC_IP);")
+        print(f"  se omite mDNS. Asegurate de que el puerto {PORT} esté")
+        print("  accesible desde la red WiFi (en ChromeOS: Port forwarding).")
+    else:
+        print()
+        print(f"  Si el link de arriba no conecta (pasa en algunas redes")
+        print(f"  WiFi que bloquean mDNS), probá con la IP directa:")
+        print(f"    {fallback_url}")
     print("=" * 50)
 
     try:
         uvicorn.run("app.main:app", host="0.0.0.0", port=PORT, reload=False)
     finally:
-        zeroconf.close()
+        if zeroconf is not None:
+            zeroconf.close()

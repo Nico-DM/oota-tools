@@ -34,6 +34,7 @@ Eso levanta las tres herramientas a la vez:
 ./run.py --no-guide              # sin la guía del DM
 ./run.py --guide-port 9000       # cambia el puerto de la guía
 ./run.py --guide-host 0.0.0.0    # permite abrir la guía desde otro dispositivo
+./run.py --public-ip 192.168.1.42 # IP que se anuncia a los celulares (ChromeOS/Crostini)
 ```
 
 Si cerrás una de las ventanas o una herramienta termina, las demás siguen
@@ -53,3 +54,39 @@ corriendo; `Ctrl+C` cierra el resto.
 
 Cada herramienta también se puede seguir usando por separado; las
 instrucciones están en el README de cada carpeta.
+
+### ChromeOS (Chromebook)
+
+Todo corre dentro del entorno Linux de ChromeOS (Crostini), sin necesidad de
+modo desarrollador. El detalle es que ese entorno vive en una VM con red NAT:
+la IP que ve el programa (`100.115.92.x`) no es alcanzable desde los celulares,
+y mDNS (`dungeonsandphones.local`) tampoco cruza el contenedor. Hay que exponer
+el puerto y decirle a la app cuál es la IP real del equipo.
+
+1. Instalá las dependencias en la terminal de Linux:
+
+   ```bash
+   sudo apt update && sudo apt install -y python3-tk git curl
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. En **Configuración → Acerca de ChromeOS → Desarrolladores → Linux →
+   Port forwarding**, agregá `8000`/TCP (y `8001`/TCP si querés abrir la guía
+   desde otro dispositivo). ChromeOS tiene que estar con Linux iniciado.
+
+3. Averiguá la IP del Chromebook en **Configuración → Red → tu WiFi** y
+   arrancá las herramientas pasándosela:
+
+   ```bash
+   ./run.py --public-ip 192.168.1.42
+   # o: DUNGEONS_PUBLIC_IP=192.168.1.42 ./run.py
+   ```
+
+Con `--public-ip`, los links y el QR de Dungeons & Phones usan esa IP
+directamente y se omite el anuncio mDNS. El QR que genera el programa ya queda
+listo para escanear desde los celulares.
+
+Nota: la PWA no se va a poder "instalar" sobre HTTP (los service workers piden
+HTTPS), pero la página funciona igual en el navegador. Y si vas a usar el mapa
+de jugadores en un proyector o segunda pantalla, probá antes que las ventanas
+Linux puedan moverse a ese monitor en tu modelo.
