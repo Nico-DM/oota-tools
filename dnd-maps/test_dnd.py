@@ -115,9 +115,9 @@ def test_guardado():
     guardar_sesion(sesion, archivo); datos = json.load(open(archivo))
     assert datos['mapas']['t']['posiciones'] == {'1': [6, 6]} and sesion.mapas['t'].posiciones == {}   # guardar anota las posiciones del mapa abierto sin tocar la sesión
     nueva = cargar_sesion(archivo)
-    assert (nueva.proximo_id, nueva.carpeta, nueva.tamano_texto, nueva.mapa_actual, nueva.opciones.opacidad_niebla) == (7, '/mapas', 13, 't', 60)
-    assert nueva.jugadores[0].a_dict() == ana.a_dict() and nueva.personajes[0].nombre == 'Elfo' and nueva.mapas['q'].posiciones == {'1': [9, 4]}
-    assert nueva.mapas['t'].luces[0].rango_tenue == 3 and nueva.mapas['t'].explorado == [Zona(1, 1, 1, 2, 1, True)] and nueva.mapas['t'].paredes == [[9, 3, 9, 8]]
+    assert (nueva.proximo_id, nueva.carpeta, nueva.tamano_texto, nueva.mapa_actual, nueva.opciones.opacidad_niebla) == (7, '/mapas', 13, os.path.join(carpeta, 't'), 60)
+    assert nueva.jugadores[0].a_dict() == ana.a_dict() and nueva.personajes[0].nombre == 'Elfo' and nueva.mapas[os.path.join(carpeta, 'q')].posiciones == {'1': [9, 4]}
+    assert nueva.mapas[os.path.join(carpeta, 't')].luces[0].rango_tenue == 3 and nueva.mapas[os.path.join(carpeta, 't')].explorado == [Zona(1, 1, 1, 2, 1, True)] and nueva.mapas[os.path.join(carpeta, 't')].paredes == [[9, 3, 9, 8]]
     assert cargar_sesion(os.path.join(carpeta, 'no_existe.json')) == Sesion()    # sin archivo: sesión vacía
     open(archivo, 'w').write('{roto'); assert cargar_sesion(archivo) == Sesion() and os.path.exists(archivo + '.bak')   # archivo dañado: se conserva como .bak
     viejo = dict(grid=True, fog=True, gop=35, fop=80, mem=True, img='t', nid=4, dir='/x', font=13,   # formato de una versión anterior
@@ -126,7 +126,38 @@ def test_guardado():
                  chars=[dict(id='abc', n='Elfo', c='#0f0', r=2, r2=4, s=1, img=None)])
     json.dump(viejo, open(archivo, 'w')); v = cargar_sesion(archivo)
     assert (v.proximo_id, v.tamano_texto, v.opciones.opacidad_niebla, v.opciones.recordar_recorrido) == (4, 13, 80, True) and v.jugadores[0].nombre == 'Ana' and v.jugadores[0].tapada_por_paredes
-    assert v.mapas['t'].tam_casilla == 50 and v.mapas['t'].luces[0].rango_tenue == 4 and v.mapas['t'].explorado[0].lado == 1 and v.mapas['t'].paredes == [] and v.personajes[0].tapada_por_paredes
+    assert v.mapas[os.path.join(carpeta, 't')].tam_casilla == 50 and v.mapas[os.path.join(carpeta, 't')].luces[0].rango_tenue == 4 and v.mapas[os.path.join(carpeta, 't')].explorado[0].lado == 1 and v.mapas[os.path.join(carpeta, 't')].paredes == [] and v.personajes[0].tapada_por_paredes
+
+
+def test_rutas_relativas():
+    carpeta = tempfile.mkdtemp(); archivo = os.path.join(carpeta, 'dnd_estado.json')
+    mapa = os.path.join(carpeta, 'maps', 'chapter_11', 'Gravenhollow', 'mapa.png'); os.makedirs(os.path.dirname(mapa))
+    cara = os.path.join(carpeta, 'fichas', 'ana.png'); os.makedirs(os.path.dirname(cara))
+    Image.new('RGB', (10, 10), 'white').save(mapa); Image.new('RGB', (10, 10), 'white').save(cara)
+    sesion = Sesion(mapa_actual=mapa, carpeta=os.path.join(carpeta, 'maps'), jugadores=[Jugador(id=1, imagen=cara)],
+                    personajes=[Personaje(id='ana', imagen=cara)])
+    sesion.mapas[mapa] = Mapa(tam_casilla=42)
+    guardar_sesion(sesion, archivo); datos = json.load(open(archivo))
+    assert list(datos['mapas']) == ['maps/chapter_11/Gravenhollow/mapa.png']       # relativa al dnd_estado.json
+    assert datos['mapa_actual'] == 'maps/chapter_11/Gravenhollow/mapa.png' and datos['carpeta'] == 'maps'
+    assert datos['jugadores'][0]['imagen'] == 'fichas/ana.png' and datos['personajes'][0]['imagen'] == 'fichas/ana.png'
+    nueva = cargar_sesion(archivo)
+    assert nueva.mapa_actual == mapa and nueva.carpeta == os.path.join(carpeta, 'maps') and list(nueva.mapas) == [mapa]
+    assert nueva.jugadores[0].imagen == cara and nueva.personajes[0].imagen == cara and nueva.mapa.tam_casilla == 42
+
+
+def test_migracion_rutas_viejas():
+    carpeta = tempfile.mkdtemp(); archivo = os.path.join(carpeta, 'dnd_estado.json')
+    actual = os.path.join(carpeta, 'maps', 'chapter_11', 'Gravenhollow', 'Gravenhollow-DM-Notes.png')
+    os.makedirs(os.path.dirname(actual)); Image.new('RGB', (10, 10), 'white').save(actual)
+    vieja = 'C:/Users/eleze/Desktop/MAPS\\Chapter 11\\Gravenhollow\\Gravenhollow-DM-Notes.png'
+    json.dump({'mapa_actual': vieja, 'carpeta': '/var/home/nico/workspace/github.com/Nico-DM/oota/dnd-maps',
+               'mapas': {vieja: {'tam_casilla': 70}}}, open(archivo, 'w'))
+    sesion = cargar_sesion(archivo)
+    assert sesion.mapa_actual == actual and list(sesion.mapas) == [actual] and sesion.mapa.tam_casilla == 70
+    assert sesion.carpeta == os.path.join(carpeta, 'maps')   # la carpeta vieja ya no existe: se usa maps/
+    guardar_sesion(sesion, archivo); datos = json.load(open(archivo))
+    assert datos['mapa_actual'] == 'maps/chapter_11/Gravenhollow/Gravenhollow-DM-Notes.png' and datos['carpeta'] == 'maps'
 
 
 def test_editor():
@@ -187,4 +218,4 @@ def test_editor():
     editor.borrar_paredes(); sesion2 = Sesion(); Editor(sesion2).cambiar_opcion('grilla_visible', False); assert sesion2.opciones.grilla_visible is False
 
 
-test_luces_y_niebla(); test_paredes_y_memoria(); test_items(); test_geometria_y_paredes(); test_guardado(); test_editor(); print('ok')
+test_luces_y_niebla(); test_paredes_y_memoria(); test_items(); test_geometria_y_paredes(); test_guardado(); test_rutas_relativas(); test_migracion_rutas_viejas(); test_editor(); print('ok')

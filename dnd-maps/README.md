@@ -1,5 +1,18 @@
 # D&D Maps
 
+## Rutas portables
+
+`dnd_estado.json` guarda la carpeta de mapas, el mapa abierto y las imágenes de
+las fichas como rutas **relativas a la carpeta del propio archivo**, con barras
+`/`. Así el proyecto se puede mover de lugar o abrir en Windows, Linux o macOS
+sin editar el estado a mano. Al cargar, el programa las vuelve a convertir en
+rutas absolutas para trabajar.
+
+Los mapas incluidos viven en `maps/`. Si el estado viene de otra computadora,
+las rutas viejas se intentan ubicar por el final del recorrido: por ejemplo
+`.../MAPS/Chapter 11/Gravenhollow/x.png` se reconoce como
+`maps/chapter_11/Gravenhollow/x.png`.
+
 ## Levantar todo (una sola PC, el DM)
 
 Requiere instalar [uv](https://docs.astral.sh/uv/getting-started/installation/)

@@ -20,7 +20,8 @@ tu_carpeta/
      ├── items.py           Jugador, Luz, Zona, Personaje  
      ├── mapa.py            un mapa: grilla, paredes, geometría y colisión  
      ├── sesion.py          todo lo que se guarda entre usos  
-     ├── persistencia.py    leer y escribir el JSON (y formatos viejos)  
+     ├── persistencia.py    leer y escribir el JSON (y formatos viejos)  
+     ├── rutas.py           rutas relativas al JSON (portables entre computadoras)  
      ├── render.py          dibujo: grilla, niebla, luces, sombras, fichas  
      ├── herramientas.py    herramientas del mouse (patrón Estado)  
      ├── editor.py          las reglas para editar (sin Tk)  
@@ -32,7 +33,8 @@ tu_carpeta/
 | items.py |  Define la forma, los valores por defecto y el guardado de cada cosa colocada en el mapa |  nada |  
 | mapa.py |  Datos de un mapa y las reglas de su geometría y de sus paredes |  items |  
 | sesion.py |  Agrupa opciones, mapas, jugadores y personajes, y sabe volcarse a dict |  items, mapa |  
-| persistencia.py |  Archivo JSON: escritura atómica, carga tolerante y migración de formatos viejos |  sesion |  
+| persistencia.py |  Archivo JSON: escritura atómica, carga tolerante y migración de formatos viejos |  sesion, rutas |  
+| rutas.py |  Convierte entre rutas absolutas de trabajo y rutas relativas portables guardadas en el JSON |  nada |  
 | render.py |  Convierte el estado en una imagen |  items |  
 | herramientas.py |  Qué hace cada herramienta del mouse al apretar, arrastrar y soltar |  nada (recibe el Editor por parámetro) |  
 | editor.py |  Todas las reglas de edición y movimiento; habla con la vista por avisos |  herramientas, items, mapa, render (solo Superposicion y una caché) |  
