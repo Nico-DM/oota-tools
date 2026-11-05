@@ -40,9 +40,10 @@ def luz_visible(tamano, centro, paredes):
     return visible.filter(ImageFilter.GaussianBlur(1)) if hay_sombra else visible   # bordes de sombra apenas suaves
 
 
-def aclarar_niebla(mascara, centro_x, centro_y, radio_fuerte, radio_tenue, nivel_fuerte, nivel_tenue, paredes=()):
+def aclarar_niebla(mascara, centro_x, centro_y, radio_fuerte, radio_tenue, nivel_fuerte, nivel_tenue, paredes=(), visible=None):
     """Aclara la niebla con un círculo: nivel_fuerte hasta radio_fuerte, nivel_tenue hasta radio_tenue, borde suave.
-    Los niveles van de 0 (sin niebla) a 255 (niebla total). paredes = segmentos (x1, y1, x2, y2) en píxeles de la máscara que tapan la luz."""
+    Los niveles van de 0 (sin niebla) a 255 (niebla total). paredes = segmentos (x1, y1, x2, y2) en píxeles de la máscara que tapan la luz.
+    visible = máscara 'L' del tamaño de la niebla (255 = lo ve algún jugador): fuera de ella la luz no aclara nada."""
     radio_tenue = max(2, int(radio_tenue)); clave = (int(radio_fuerte), radio_tenue, nivel_fuerte, nivel_tenue)
     if clave not in _cache_degradados:
         proporcion_fuerte = int(radio_fuerte) / radio_tenue
@@ -59,6 +60,8 @@ def aclarar_niebla(mascara, centro_x, centro_y, radio_fuerte, radio_tenue, nivel
     if paredes:   # lo que queda detrás de una pared recibe niebla total
         locales = [(ax - esquina[0], ay - esquina[1], bx - esquina[0], by - esquina[1]) for ax, ay, bx, by in paredes]
         estampa = ImageChops.lighter(estampa, ImageChops.invert(luz_visible(estampa.size, (centro_x - esquina[0], centro_y - esquina[1]), locales)))
+    if visible is not None:   # una luz solo se ve donde algún jugador tiene línea de visión
+        estampa = ImageChops.lighter(estampa, ImageChops.invert(visible.crop(region)))
     mascara.paste(ImageChops.darker(mascara.crop(region), estampa), esquina)
 
 
@@ -111,13 +114,24 @@ def dibujar_mapa(imagen_mapa, sesion, ancho_disponible, alto_disponible, es_dm, 
         escala_niebla = .5   # la niebla se calcula a media resolución: es suave y así es más rápida
         ancho_niebla, alto_niebla = max(1, int(ancho * escala_niebla)), max(1, int(alto * escala_niebla))
         niebla_base = int(2.55 * opciones.opacidad_niebla); mascara = Image.new('L', (ancho_niebla, alto_niebla), niebla_base)
-        def aclarar(destino, item, nivel_fuerte, nivel_tenue, todo_fuerte=False):   # todo_fuerte: también la zona tenue se ve como luz fuerte
+        jugadores_con_vision = [j for j in sesion.jugadores if j.con_vision]
+        paredes_niebla = [tuple(c * escala_niebla for c in pared) for pared in paredes_px]
+        def aclarar(destino, item, nivel_fuerte, nivel_tenue, todo_fuerte=False, visible=None):   # todo_fuerte: también la zona tenue se ve como luz fuerte
             radio_fuerte, radio_tenue = item.radios_px(casilla_px)
             if radio_tenue > 0:
                 cx, cy = centro_px(item)
-                paredes = [tuple(c * escala_niebla for c in pared) for pared in paredes_px] if item.tapada_por_paredes else ()
+                paredes = paredes_niebla if item.tapada_por_paredes else ()
                 aclarar_niebla(destino, cx * escala_niebla, cy * escala_niebla, (radio_tenue if todo_fuerte else radio_fuerte) * escala_niebla,
-                               radio_tenue * escala_niebla, nivel_fuerte, nivel_tenue, paredes)
+                               radio_tenue * escala_niebla, nivel_fuerte, nivel_tenue, paredes, visible)
+        def visibilidad_de_jugadores():
+            """Lo que ve al menos un jugador con visión, sin límite de distancia pero tapado por las paredes."""
+            visible = Image.new('L', (ancho_niebla, alto_niebla), 0)
+            for jugador in jugadores_con_vision:
+                if not jugador.tapada_por_paredes: return Image.new('L', (ancho_niebla, alto_niebla), 255)
+                cx, cy = centro_px(jugador)
+                visible = ImageChops.lighter(visible, luz_visible((ancho_niebla, alto_niebla), (cx * escala_niebla, cy * escala_niebla), paredes_niebla))
+            return visible
+        visible_jugadores = visibilidad_de_jugadores() if mapa.luces and not es_dm else None   # en la ventana de jugadores, las luces solo aclaran lo que ve un jugador
         if opciones.recordar_recorrido and mapa.explorado:
             clave_explorada = (ruta, ancho, alto, len(mapa.explorado), mapa.tam_casilla, mapa.desfase_x, mapa.desfase_y, niebla_base,
                                tuple(map(tuple, mapa.paredes)))
@@ -127,7 +141,8 @@ def dibujar_mapa(imagen_mapa, sesion, ancho_disponible, alto_disponible, es_dm, 
                 for zona in mapa.explorado: aclarar(mascara_explorada, zona, 0, 0, todo_fuerte=True)
                 _cache_niebla_explorada[clave_explorada] = mascara_explorada
             mascara = _cache_niebla_explorada[clave_explorada].copy()
-        for item in [j for j in sesion.jugadores if j.con_vision] + mapa.luces: aclarar(mascara, item, 0, int(niebla_base * .5))
+        for jugador in jugadores_con_vision: aclarar(mascara, jugador, 0, int(niebla_base * .5))
+        for luz in mapa.luces: aclarar(mascara, luz, 0, int(niebla_base * .5), visible=visible_jugadores)
         if es_dm: mascara = mascara.point(lambda v: v // 2)   # el DM ve el mapa a través de la niebla
         imagen = Image.composite(Image.new('RGB', (ancho, alto)), imagen, mascara.resize((ancho, alto), Image.Resampling.BILINEAR))
 

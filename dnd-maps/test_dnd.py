@@ -39,12 +39,13 @@ def test_luces_y_niebla():
     assert pixel(sesion, grande, 200, 110) == BLANCO and max(pixel(sesion, grande, 205, 165)) < 30
     ana.col, ana.fila, ana.rango_fuerte = 1, 1, 1
     sesion.opciones.opacidad_niebla = 0; assert px(190, 90) == BLANCO           # opacidad 0 = sin niebla
-    sesion.opciones.opacidad_niebla = 97; mapa.luces.append(Luz(col=1, fila=1, rango_fuerte=1)); ana.con_vision = False
-    assert px(44, 30) == BLANCO                                                  # una luz despeja la niebla
+    sesion.opciones.opacidad_niebla = 97; ana.rango_fuerte = ana.rango_tenue = 0
+    mapa.luces.append(Luz(col=1, fila=1, rango_fuerte=1)); assert ana.con_vision
+    assert px(44, 30) == BLANCO                                                  # una luz despeja la niebla (el jugador la ve)
     mapa.luces[0].rango_fuerte = 0; assert max(px(44, 30)) < 30                 # sin rangos no ilumina
     mapa.luces[0].rango_fuerte = 1; sesion.opciones.opacidad_niebla = 100
     assert px(44, 30) == BLANCO and max(px(190, 90)) < 3                         # opacidad máxima: se ve lo que ilumina, el resto negro
-    ana.con_vision = True; mapa.luces.clear(); assert px(30, 30) != NEGRO       # y la ficha se sigue viendo
+    ana.rango_fuerte = 1; mapa.luces.clear(); assert px(30, 30) != NEGRO        # y la ficha se sigue viendo
     sesion.opciones.opacidad_niebla = 97; ana.lado = 2
     assert px(58, 40) == BLANCO                                                  # ficha de 4 cubos ilumina desde su centro
     ana.rango_fuerte = 0; assert max(px(58, 40)) < 30; ana.rango_fuerte = 1
@@ -57,7 +58,8 @@ def test_luces_y_niebla():
 
 
 def test_paredes_y_memoria():
-    luz = Luz(col=7, fila=5, rango_fuerte=4); sesion, mapa, _ = escena(luces=[luz]); imagen = Image.new('RGB', (300, 200), 'white')
+    luz = Luz(col=7, fila=5, rango_fuerte=4); testigo = Jugador(id=1, col=7, fila=5, rango_fuerte=0, rango_tenue=0, tapada_por_paredes=False)
+    sesion, mapa, _ = escena(jugadores=[testigo], luces=[luz]); imagen = Image.new('RGB', (300, 200), 'white')
     px = lambda x, y, **k: pixel(sesion, imagen, x, y, **k)
     assert px(200, 110) == BLANCO and px(100, 110) == BLANCO
     mapa.paredes.append([9, 3, 9, 8])
@@ -69,6 +71,24 @@ def test_paredes_y_memoria():
     mapa.explorado[0] = Zona(7, 5, 4, 0, 1, False); olvidar_niebla_explorada(); assert px(200, 110) == BLANCO   # (la caché solo ve cuántas zonas hay, no cambios en el lugar)
     mapa.explorado[0] = Zona(1, 1, 1, 3, 1, True); olvidar_niebla_explorada(); assert px(30 + 55, 30) == BLANCO   # lo recorrido: luz fuerte, tenue incluido
     sesion.opciones.recordar_recorrido = False; assert max(px(30 + 55, 30)) < 30  # sin memoria no se ve
+
+
+def test_luces_solo_dentro_de_la_vision_de_un_jugador():
+    luz = Luz(col=7, fila=5, rango_fuerte=4)
+    ana = Jugador(id=1, col=1, fila=5, rango_fuerte=0, rango_tenue=0)   # tiene visión, pero no ilumina por su cuenta
+    sesion, mapa, _ = escena(jugadores=[ana], luces=[luz]); imagen = Image.new('RGB', (300, 200), 'white')
+    px = lambda x, y, **k: pixel(sesion, imagen, x, y, **k)
+    assert px(200, 110) == BLANCO                                  # sin pared: la luz se ve
+    mapa.paredes.append([5, 3, 5, 8])                              # pared entre el jugador y la luz
+    assert max(px(200, 110)) < 30                                  # la luz no se ve a través de la pared
+    assert px(200, 110, es_dm=True) == BLANCO                     # el DM sí ve la luz completa
+    ana.col = 6                                                    # el jugador pasa al otro lado de la pared
+    assert px(200, 110) == BLANCO
+    ana.con_vision = False
+    assert max(px(200, 110)) < 30                                  # sin un jugador con visión, la luz no revela nada
+    assert px(200, 110, es_dm=True) == BLANCO                     # el DM la sigue viendo
+    ana.con_vision = True; mapa.paredes.clear()
+    assert px(200, 110) == BLANCO
 
 
 def test_items():
@@ -218,4 +238,4 @@ def test_editor():
     editor.borrar_paredes(); sesion2 = Sesion(); Editor(sesion2).cambiar_opcion('grilla_visible', False); assert sesion2.opciones.grilla_visible is False
 
 
-test_luces_y_niebla(); test_paredes_y_memoria(); test_items(); test_geometria_y_paredes(); test_guardado(); test_rutas_relativas(); test_migracion_rutas_viejas(); test_editor(); print('ok')
+test_luces_y_niebla(); test_paredes_y_memoria(); test_luces_solo_dentro_de_la_vision_de_un_jugador(); test_items(); test_geometria_y_paredes(); test_guardado(); test_rutas_relativas(); test_migracion_rutas_viejas(); test_editor(); print('ok')

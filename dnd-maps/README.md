@@ -13,6 +13,14 @@ las rutas viejas se intentan ubicar por el final del recorrido: por ejemplo
 `.../MAPS/Chapter 11/Gravenhollow/x.png` se reconoce como
 `maps/chapter_11/Gravenhollow/x.png`.
 
+## Luces y línea de visión
+
+Una luz solo revela las zonas que algún jugador con visión puede ver. Si una
+sala está iluminada pero queda detrás de una pared para todos los jugadores,
+sigue cubierta por la niebla. Esto se aplica a la ventana de jugadores; la del
+DM sigue mostrando el alcance completo de cada luz. La memoria del recorrido,
+si está activada, se mantiene aparte y conserva lo que los jugadores ya vieron.
+
 ## Levantar todo (una sola PC, el DM)
 
 Requiere instalar [uv](https://docs.astral.sh/uv/getting-started/installation/)
