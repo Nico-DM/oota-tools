@@ -2,6 +2,7 @@
 cuando el Editor avisa que algo cambió (vista.repintar, vista.reconstruir_filas...), vuelve a dibujar."""
 from __future__ import annotations
 import os
+import sys
 from dataclasses import dataclass, field, replace
 from .editor import Editor
 from .herramientas import BorrarPared, Colocar, DibujarPared
@@ -35,6 +36,10 @@ def main():
     sesion = cargar_sesion(RUTA_ESTADO)   # sesión anterior: mapas, fichas, luces, personajes
     vista = _Vista(); editor = Editor(sesion, vista)
     ventana_dm = tk.Tk(); ventana_dm.title('Mesa del DM'); ventana_dm.geometry('1360x840'); ventana_dm.configure(bg=FONDO)
+    if len(tkfont.families(ventana_dm)) <= 10:
+        print('[dnd-maps] Aviso: este Tk no tiene Xft; las fuentes se van a ver pixeladas y sin '
+              'antialiasing. Usá un Python con tkinter del sistema (python3-tkinter en Fedora/Bazzite); '
+              'ver dnd-maps/README.md.', file=sys.stderr)
     ventana_jugadores = tk.Toplevel(ventana_dm); ventana_jugadores.title('Mapa de jugadores'); ventana_jugadores.geometry('1000x700+80+80')
     for opcion, valor in (('background', FONDO), ('foreground', BLANCO), ('selectBackground', ROJO), ('selectForeground', BLANCO)):
         ventana_dm.option_add(f'*TCombobox*Listbox.{opcion}', valor)
