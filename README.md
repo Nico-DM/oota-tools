@@ -66,15 +66,54 @@ el puerto y decirle a la app cuál es la IP real del equipo.
 1. Instalá las dependencias en la terminal de Linux:
 
    ```bash
-   sudo apt update && sudo apt install -y python3-tk git curl
+   sudo apt update && sudo apt install -y python3-tk python3-venv git curl
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. En **Configuración → Acerca de ChromeOS → Desarrolladores → Linux →
+2. Cloná el repo y creá el entorno de los mapas con el Python del sistema.
+   El Python de ChromeOS suele ser anterior a 3.12, así que uv no puede armar
+   ese entorno (le falta `distutils`/`requires-python`); con `venv` + Pillow de
+   PyPI sí funciona, y usa el Tk del sistema (fuentes nítidas):
+
+   ```bash
+   git clone https://github.com/Nico-DM/oota-tools.git
+   cd oota-tools/dnd-maps
+   python3 -m venv --clear .venv
+   .venv/bin/pip install 'Pillow>=10.1'
+   cd ..
+   ```
+
+   Si `python3 -m venv` falla con «ensurepip is not available», el contenedor
+   no tiene `python3-venv` y en ChromeOS viejos (Debian 11) `apt` puede no
+   poder instalarlo. En ese caso borrá el `.venv` a medias e instalá Pillow
+   en el sitio del usuario (cambiá `3.9` por tu versión de Python, `python3 -V`):
+
+   ```bash
+   rm -rf dnd-maps/.venv
+   curl -sS https://bootstrap.pypa.io/pip/3.9/get-pip.py -o /tmp/get-pip.py
+   python3 /tmp/get-pip.py --user
+   python3 -m pip install --user 'Pillow>=10.1'
+   ```
+
+   Si `get-pip.py` falla con `No module named 'distutils.cmd'`, falta el
+   paquete `python3-distutils` (Debian lo separa del Python base). El `.deb`
+   de bullseye main sigue disponible aunque el repo `security` esté roto:
+
+   ```bash
+   cd /tmp
+   curl -LO https://deb.debian.org/debian/pool/main/p/python3-stdlib-extensions/python3-lib2to3_3.9.2-1_all.deb
+   curl -LO https://deb.debian.org/debian/pool/main/p/python3-stdlib-extensions/python3-distutils_3.9.2-1_all.deb
+   sudo dpkg -i python3-lib2to3_3.9.2-1_all.deb python3-distutils_3.9.2-1_all.deb
+   ```
+
+   `run.py` va a detectar ese Python del sistema (con Tk y Pillow) y usarlo
+   directamente para los mapas.
+
+3. En **Configuración → Acerca de ChromeOS → Desarrolladores → Linux →
    Port forwarding**, agregá `8000`/TCP (y `8001`/TCP si querés abrir la guía
    desde otro dispositivo). ChromeOS tiene que estar con Linux iniciado.
 
-3. Averiguá la IP del Chromebook en **Configuración → Red → tu WiFi** y
+4. Averiguá la IP del Chromebook en **Configuración → Red → tu WiFi** y
    arrancá las herramientas pasándosela:
 
    ```bash

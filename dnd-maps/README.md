@@ -51,5 +51,12 @@ uv run dnd.py
 ```
 
 Si en vez de `uv run` ejecutás `python3 dnd.py` directamente con el Python del
-sistema, además de tkinter necesitás Pillow con ImageTk (`python3-pillow-tk` en
-Fedora).
+sistema, además de tkinter necesitás Pillow >= 10.1 con ImageTk. En Fedora:
+`python3-pillow-tk`; en Debian/Ubuntu/ChromeOS el paquete del sistema puede ser
+más viejo, así que conviene instalarlo dentro de un venv:
+
+```bash
+python3 -m venv --clear .venv
+.venv/bin/pip install 'Pillow>=10.1'
+.venv/bin/python dnd.py
+```

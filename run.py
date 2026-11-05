@@ -40,6 +40,10 @@ class _Stop(Exception):
     """Se lanza desde los manejadores de SIGINT/SIGTERM para cerrar ordenadamente."""
 
 
+class _MapsUnavailable(Exception):
+    """No hay ningún Python con Tk que pueda correr los mapas."""
+
+
 def _port_busy(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -132,25 +136,120 @@ def _con_dependencias(python: str) -> list[str]:
     return [python]
 
 
+def _python_version(python: str) -> tuple[int, int] | None:
+    try:
+        resultado = subprocess.run(
+            [python, "-c", "import sys; print(sys.version_info[0], sys.version_info[1])"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    try:
+        mayor, menor = (int(parte) for parte in resultado.stdout.split())
+    except ValueError:
+        return None
+    return mayor, menor
+
+
+def _uv_puede_usar(python: str) -> bool:
+    """Si uv puede armar el entorno de dnd-maps con ese intérprete.
+
+    uv respeta el `requires-python` del proyecto (>=3.12) y, en Pythons
+    más viejos, además necesita `distutils`. Los Python de Debian/ChromeOS
+    suelen ser 3.9/3.11, así que no sirven para `uv run --python`: en ese
+    caso conviene crear el `.venv` de los mapas con el Python del sistema
+    e instalar Pillow ahí.
+    """
+    if not shutil.which("uv"):
+        return False
+    version = _python_version(python)
+    return version is not None and version >= (3, 12)
+
+
+def _aviso_pillow(python: str) -> None:
+    print(
+        f"[oota] Aviso: {python} tiene Tk con Xft pero le falta Pillow,\n"
+        "       y uv no puede usar ese Python para dnd-maps (necesita >=3.12).\n"
+        "       Los mapas van a salir con el Python de uv y fuentes pixeladas.\n"
+        "       Para fuentes nítidas, creá el entorno de los mapas con el\n"
+        "       Python del sistema (una sola vez):\n"
+        "         cd dnd-maps && python3 -m venv --clear .venv\n"
+        "         .venv/bin/pip install 'Pillow>=10.1'\n"
+        "       Si no tenés python3-venv (ChromeOS viejo), probá:\n"
+        "         python3 -m pip install --user 'Pillow>=10.1'\n"
+        "       Más detalles en el README, sección ChromeOS.",
+        flush=True,
+    )
+
+
 def _maps_cmd() -> tuple[list[str], bool]:
     """Comando para los mapas y si el Tk elegido parece no tener Xft."""
     elegido = os.environ.get("OOTA_MAPS_PYTHON")
     if elegido:
         estado = _probar_tk(elegido)
         if estado == "falta-pillow":
-            return _con_dependencias(elegido), False
+            if _uv_puede_usar(elegido):
+                return _con_dependencias(elegido), False
+            _aviso_pillow(elegido)
+            return _python_cmd(MAPS_DIR, "D&D Maps"), True
         return [elegido], estado == "sin-xft"
 
     sin_xft = False
+    sin_pillow: str | None = None
     for python in _candidatos_python():
         estado = _probar_tk(python)
         if estado == "xft":
             return [python], False
-        if estado == "falta-pillow":
-            return _con_dependencias(python), False
         if estado == "sin-xft":
             sin_xft = True
+        elif estado == "falta-pillow" and sin_pillow is None:
+            # No cortar acá: puede haber otro Python (por ejemplo, el del
+            # sistema con Pillow instalado) que sí sirva.
+            sin_pillow = python
+
+    if sin_pillow:
+        if _uv_puede_usar(sin_pillow):
+            return _con_dependencias(sin_pillow), False
+        _aviso_pillow(sin_pillow)
+        if sin_xft or shutil.which("uv"):
+            return _python_cmd(MAPS_DIR, "D&D Maps"), True
+        raise _MapsUnavailable(
+            "no encontré un Python con Tk utilizable; revisá dnd-maps/README.md"
+        )
+
     return _python_cmd(MAPS_DIR, "D&D Maps"), sin_xft
+
+
+def _start_maps() -> subprocess.Popen | None:
+    """Arranca las ventanas Tk, o devuelve None si no hay cómo."""
+    try:
+        cmd, sin_xft = _maps_cmd()
+    except _MapsUnavailable as exc:
+        print(f"[oota] No se pudieron abrir los mapas: {exc}", flush=True)
+        print("[oota] El resto de las herramientas sigue corriendo.", flush=True)
+        return None
+
+    if "--python" in cmd:
+        print(
+            "[oota] Preparando los mapas con el Python del sistema "
+            "(Tk con Xft)…",
+            flush=True,
+        )
+    if sin_xft:
+        print(
+            "[oota] Aviso: el Tk de este Python no tiene Xft; las fuentes\n"
+            "       de los mapas se van a ver pixeladas. Instalá\n"
+            "       python3-tkinter del sistema o mirá dnd-maps/README.md.",
+            flush=True,
+        )
+    print("[oota] Iniciando D&D Maps…", flush=True)
+    return subprocess.Popen(
+        cmd + ["dnd.py"],
+        cwd=MAPS_DIR,
+        start_new_session=(os.name != "nt"),
+    )
 
 
 def _python_cmd(project: Path, label: str) -> list[str]:
@@ -351,32 +450,11 @@ def main() -> int:
             )
 
         if run_maps:
-            cmd, sin_xft = _maps_cmd()
-            if "--python" in cmd:
-                print(
-                    "[oota] Preparando los mapas con el Python del sistema "
-                    "(Tk con Xft)…",
-                    flush=True,
-                )
-            if sin_xft:
-                print(
-                    "[oota] Aviso: el Tk de este Python no tiene Xft; las fuentes\n"
-                    "       de los mapas se van a ver pixeladas. Instalá\n"
-                    "       python3-tkinter del sistema o mirá dnd-maps/README.md.",
-                    flush=True,
-                )
-            cmd = cmd + ["dnd.py"]
-            print("[oota] Iniciando D&D Maps…", flush=True)
-            processes.append(
-                (
-                    "D&D Maps",
-                    subprocess.Popen(
-                        cmd,
-                        cwd=MAPS_DIR,
-                        start_new_session=(os.name != "nt"),
-                    ),
-                )
-            )
+            proc = _start_maps()
+            if proc is None:
+                run_maps = False
+            else:
+                processes.append(("D&D Maps", proc))
 
         print()
         print("=" * 68)
